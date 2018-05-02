@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>myVue</title>
+  <style>
+    #app{
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <form action="">
+      <input type="text" v-model="number">
+      <button type="button" v-click="increment">增加</button>
+      <h3 v-bind="number"></h3>
+    </form>
+  </div>
+</body>
+
+<script>
+  function myVue(options){
+    this._init(options)
+  }
+  myVue.prototype._init = function(options){
+    this.$options = options;
+    this.$el = document.querySelector(options.el);
+    this.$data = options.data;
+    this.$methods = options.methods;
+
+    this._binding = {};//_binding保存着model与view的映射关系，也就是我们前面定义的Watcher的实例。当model改变时，我们会触发其中的指令类更新，保证view也能实时更新}
+    this._obverse(this.$data);//初始化的时候添加劫持监听所有属性
+    this._compile(this.$el);
+  }
+
+  myVue.prototype._obverse = function(obj){
+    var value;
+    for(let key in obj){
+      if(obj.hasOwnProperty(key)){
+        this._binding[key] = {
+          _directives:[]//里面是一些Watcher实例
+        }
+        value = obj[key];
+        if(Object.prototype.toString.call(value) === '[object String]'){
+          this._obverse(value)
+        }
+
+        var binding = this._binding[key];//拿到vue实例某个data属性绑定的watcher
+        Object.defineProperty(this.$data, key, {
+          enumerable: true,
+          configurable: true,
+          get: function(){
+            console.log(`获取${value}`);
+            return value;
+          },
+          set: function(newVal){
+            console.log(`更新${newVal}`);
+            if(value !== newVal){
+              value = newVal;
+              // obj[key] = newVal;
+              binding._directives.forEach(function(item){//对某个key绑定的所有watcher遍历
+                item.update()//更新view层
+              })
+            }
+          }
+        })
+      }
+    }
+  }
+
+  myVue.prototype._compile = function(root){
+    var _this = this;
+    var nodes = root.children;
+    for(let i = 0; i < nodes.length; i++ ){
+      var node = nodes[i];
+      if(node.children.length){
+        this._compile(node);
+      }
+      if(node.hasAttribute('v-click')){// 如果有v-click属性，我们监听他的onclick事件
+        node.onclick = (function(){
+          var attrVal = nodes[i].getAttribute('v-click');
+          return _this.$methods[attrVal].bind(_this.$data);
+        })()
+      }
+      if(node.hasAttribute('v-model') && (node.tagName == 'INPUT' || node.tagName == 'TEXTAREA')){
+        node.addEventListener('input',(function(key){
+          var attrVal = node.getAttribute('v-model');
+          _this._binding[attrVal]._directives.push(new Watcher(
+            'input',
+            node,
+            _this,
+            attrVal,
+            'value'
+          ))
+          return function(){
+            _this.$data[attrVal] = nodes[key].value;
+          }
+        })(i))
+      }
+      if(node.hasAttribute('v-bind')){
+        var attrVal = node.getAttribute('v-bind');
+        _this._binding[attrVal]._directives.push(new Watcher(
+          'text',
+          node,
+          _this,
+          attrVal,
+          'innerHTML'
+        ))
+      }
+    }
+  }
+
+  function Watcher(name, el, vm, exp, attr){
+    this.name = name; //
+    this.el = el;
+    this.vm = vm;
+    this.exp = exp;
+    this.attr = attr;
+
+    this.update();
+  }
+
+  Watcher.prototype.update = function() {
+    this.el[this.attr] = this.vm.$data[this.exp];
+  }
+  
+  window.onload = function(){
+    var app = new myVue({
+      el:'#app',
+      data:{
+        number: 0
+      },
+      methods:{
+        increment: function(){
+          this.number ++;
+        }
+      }
+    })
+  }
+</script>
+</html>
